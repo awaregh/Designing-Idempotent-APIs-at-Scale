@@ -1,0 +1,178 @@
+version: "3.9"
+
+x-api-common: &api-common
+  build:
+    context: ..
+    dockerfile: services/Dockerfile
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+  environment:
+    DATABASE_URL: postgresql+asyncpg://payments:payments@postgres:5432/payments
+    REDIS_URL: redis://redis:6379/0
+    RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+  restart: unless-stopped
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: payments
+      POSTGRES_PASSWORD: payments
+      POSTGRES_DB: payments
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payments -d payments"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  # ── API Variants ─────────────────────────────────────────────────────────────
+
+  baseline:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: baseline
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  idempotency_key:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: idempotency_key
+    ports:
+      - "8002:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  natural_idempotency:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: natural_idempotency
+    ports:
+      - "8003:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  db_constraint:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: db_constraint
+    ports:
+      - "8004:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dedup_queue:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: dedup_queue
+    ports:
+      - "8005:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  event_driven:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: event_driven
+    ports:
+      - "8006:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  saga:
+    <<: *api-common
+    build:
+      context: ..
+      dockerfile: services/Dockerfile
+      args:
+        SERVICE_NAME: saga
+    ports:
+      - "8007:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
